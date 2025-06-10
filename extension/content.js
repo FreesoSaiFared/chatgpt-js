@@ -33,12 +33,53 @@
                     settings.save('skipAlert', !config.skipAlert); }
     );}});
 
-    // Your code here...
-    // Your code here...
-    // Your code here...
-    // Your code here...
-    // Your code here...
-    // Your code here...
+    if (location.hostname.endsWith('.wikipedia.org')
+        && !location.hostname.startsWith('en.')) {
+        translateWikipediaPage();
+    }
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('translate_page') === '1') {
+        chrome.storage.local.get('chatgptJS_textsToTranslate', async ({ chatgptJS_textsToTranslate }) => {
+            if (Array.isArray(chatgptJS_textsToTranslate)) {
+                const results = [];
+                for (const text of chatgptJS_textsToTranslate) {
+                    const english = await chatgpt.translate(text, 'English');
+                    results.push(english);
+                }
+                chrome.storage.local.set({ chatgptJS_translatedTexts: results }, () => {
+                    window.close();
+                });
+            } else window.close();
+        });
+    }
+
+    async function translateWikipediaPage() {
+        const paragraphs = Array.from(document.querySelectorAll('p'));
+        const texts = paragraphs.map(p => p.innerText.trim());
+        chrome.storage.local.set({ chatgptJS_textsToTranslate: texts }, () => {
+            window.open('https://chatgpt.com/?translate_page=1', '_blank');
+        });
+        let timeoutId;
+        function handleStorageChange(changes, area) {
+            if (area === 'local' && changes.chatgptJS_translatedTexts) {
+                const chatgptJS_translatedTexts = changes.chatgptJS_translatedTexts.newValue;
+                if (Array.isArray(chatgptJS_translatedTexts)) {
+                    paragraphs.forEach((p, i) => {
+                        if (chatgptJS_translatedTexts[i]) p.innerText = chatgptJS_translatedTexts[i];
+                    });
+                    chrome.storage.local.remove(['chatgptJS_textsToTranslate', 'chatgptJS_translatedTexts']);
+                    chrome.storage.onChanged.removeListener(handleStorageChange);
+                    if (timeoutId) clearTimeout(timeoutId);
+                }
+            }
+        }
+        chrome.storage.onChanged.addListener(handleStorageChange);
+        // Fallback: remove listener after 30 seconds if translation doesn't arrive
+        timeoutId = setTimeout(() => {
+            chrome.storage.onChanged.removeListener(handleStorageChange);
+        }, 30000);
+    }
 
     // Define FEEDBACK functions
 
